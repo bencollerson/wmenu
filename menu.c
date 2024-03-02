@@ -223,9 +223,9 @@ static void match_items(struct menu *menu) {
 	menu->matches_end = NULL;
 	menu->sel = NULL;
 
-	size_t text_len = strlen(menu->input);
+	size_t input_len = strlen(menu->input);
 
-	/* tokenize text by space for matching the tokens individually */
+	/* tokenize input by space for matching the tokens individually */
 	strcpy(buf, menu->input);
 	tok = strtok(buf, " ");
 	while (tok) {
@@ -253,7 +253,7 @@ static void match_items(struct menu *menu) {
 			/* not all tokens match */
 			continue;
 		}
-		if (!tokc || !menu->strncmp(menu->input, item->text, text_len + 1)) {
+		if (!tokc || !menu->strncmp(menu->input, item->text, input_len + 1)) {
 			append_item(item, &lexact, &exactend);
 		} else if (!menu->strncmp(tokv[0], item->text, tok_len)) {
 			append_item(item, &lprefix, &prefixend);
