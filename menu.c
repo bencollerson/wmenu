@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include <assert.h>
 #include <ctype.h>
 #include <poll.h>
 #include <stdbool.h>
@@ -18,7 +19,55 @@
 #include "menu.h"
 
 #include "pango.h"
+#include "pool-buffer.h"
 #include "render.h"
+#include "wlr-layer-shell-unstable-v1-client-protocol.h"
+
+// Creates and returns a new menu.
+struct menu *menu_create() {
+	struct menu *menu = calloc(1, sizeof(struct menu));
+	menu->strncmp = strncmp;
+	menu->font = "monospace 10";
+	menu->normalbg = 0x222222ff;
+	menu->normalfg = 0xbbbbbbff;
+	menu->promptbg = 0x005577ff;
+	menu->promptfg = 0xeeeeeeff;
+	menu->selectionbg = 0x005577ff;
+	menu->selectionfg = 0xeeeeeeff;
+	return menu;
+}
+
+// Creates and returns a new keyboard.
+struct keyboard *keyboard_create(struct menu *menu, struct wl_keyboard *wl_keyboard) {
+	struct keyboard *keyboard = calloc(1, sizeof(struct keyboard));
+	keyboard->menu = menu;
+	keyboard->keyboard = wl_keyboard;
+	keyboard->context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	assert(keyboard->context != NULL);
+	keyboard->repeat_timer = timerfd_create(CLOCK_MONOTONIC, 0);
+	assert(keyboard->repeat_timer != -1);
+	return keyboard;
+}
+
+// Sets the current keyboard.
+void menu_set_keyboard(struct menu *menu, struct keyboard *keyboard) {
+	menu->keyboard = keyboard;
+}
+
+// Creates and returns a new output.
+struct output *output_create(struct menu *menu, struct wl_output *wl_output) {
+	struct output *output = calloc(1, sizeof(struct output));
+	output->menu = menu;
+	output->output = wl_output;
+	output->scale = 1;
+	return output;
+}
+
+// Adds an output to the output list.
+void menu_add_output(struct menu *menu, struct output *output) {
+	output->next = menu->output_list;
+	menu->output_list = output;
+}
 
 static bool parse_color(const char *color, uint32_t *result) {
 	if (color[0] == '#') {
@@ -37,17 +86,8 @@ static bool parse_color(const char *color, uint32_t *result) {
 	return true;
 }
 
-// Initialize the menu.
-void menu_init(struct menu *menu, int argc, char *argv[]) {
-	menu->strncmp = strncmp;
-	menu->font = "monospace 10";
-	menu->background = 0x222222ff;
-	menu->foreground = 0xbbbbbbff;
-	menu->promptbg = 0x005577ff;
-	menu->promptfg = 0xeeeeeeff;
-	menu->selectionbg = 0x005577ff;
-	menu->selectionfg = 0xeeeeeeff;
-
+// Parse menu options from command line arguments.
+void menu_getopts(struct menu *menu, int argc, char *argv[]) {
 	const char *usage =
 		"Usage: wmenu [-biv] [-f font] [-l lines] [-o output] [-p prompt]\n"
 		"\t[-N color] [-n color] [-M color] [-m color] [-S color] [-s color]\n";
@@ -77,12 +117,12 @@ void menu_init(struct menu *menu, int argc, char *argv[]) {
 			menu->prompt = optarg;
 			break;
 		case 'N':
-			if (!parse_color(optarg, &menu->background)) {
+			if (!parse_color(optarg, &menu->normalbg)) {
 				fprintf(stderr, "Invalid background color: %s", optarg);
 			}
 			break;
 		case 'n':
-			if (!parse_color(optarg, &menu->foreground)) {
+			if (!parse_color(optarg, &menu->normalfg)) {
 				fprintf(stderr, "Invalid foreground color: %s", optarg);
 			}
 			break;
@@ -262,6 +302,8 @@ static void match_items(struct menu *menu) {
 		}
 	}
 
+	free(tokv);
+
 	if (lexact) {
 		menu->matches = lexact;
 		menu->matches_end = exactend;
@@ -364,13 +406,13 @@ void menu_keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 		return;
 	}
 
-	bool ctrl = xkb_state_mod_name_is_active(menu->keyboard->xkb_state,
+	bool ctrl = xkb_state_mod_name_is_active(menu->keyboard->state,
 			XKB_MOD_NAME_CTRL,
 			XKB_STATE_MODS_DEPRESSED | XKB_STATE_MODS_LATCHED);
-	bool meta = xkb_state_mod_name_is_active(menu->keyboard->xkb_state,
+	bool meta = xkb_state_mod_name_is_active(menu->keyboard->state,
 			XKB_MOD_NAME_ALT,
 			XKB_STATE_MODS_DEPRESSED | XKB_STATE_MODS_LATCHED);
-	bool shift = xkb_state_mod_name_is_active(menu->keyboard->xkb_state,
+	bool shift = xkb_state_mod_name_is_active(menu->keyboard->state,
 			XKB_MOD_NAME_SHIFT,
 			XKB_STATE_MODS_DEPRESSED | XKB_STATE_MODS_LATCHED);
 
@@ -448,7 +490,7 @@ void menu_keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 			return;
 		case XKB_KEY_Y:
 			// Paste clipboard
-			if (!menu->offer) {
+			if (!menu->data_offer) {
 				return;
 			}
 
@@ -457,7 +499,7 @@ void menu_keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 				// Pipe failed
 				return;
 			}
-			wl_data_offer_receive(menu->offer, "text/plain", fds[1]);
+			wl_data_offer_receive(menu->data_offer, "text/plain", fds[1]);
 			close(fds[1]);
 
 			wl_display_roundtrip(menu->display);
@@ -472,8 +514,8 @@ void menu_keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 			}
 			close(fds[0]);
 
-			wl_data_offer_destroy(menu->offer);
-			menu->offer = NULL;
+			wl_data_offer_destroy(menu->data_offer);
+			menu->data_offer = NULL;
 			match_items(menu);
 			render_menu(menu);
 			return;
@@ -641,4 +683,71 @@ void menu_keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 			render_menu(menu);
 		}
 	}
+}
+
+// Frees the keyboard.
+static void free_keyboard(struct keyboard *keyboard) {
+	wl_keyboard_release(keyboard->keyboard);
+	xkb_state_unref(keyboard->state);
+	xkb_keymap_unref(keyboard->keymap);
+	xkb_context_unref(keyboard->context);
+	free(keyboard);
+}
+
+// Frees the outputs.
+static void free_outputs(struct menu *menu) {
+	struct output *next = menu->output_list;
+	while (next) {
+		struct output *output = next;
+		next = output->next;
+		wl_output_destroy(output->output);
+		free(output);
+	}
+}
+
+// Frees menu pages.
+static void free_pages(struct menu *menu) {
+	struct page *next = menu->pages;
+	while (next) {
+		struct page *page = next;
+		next = page->next;
+		free(page);
+	}
+}
+
+// Frees menu items.
+static void free_items(struct menu *menu) {
+	struct item *next = menu->items;
+	while (next) {
+		struct item *item = next;
+		next = item->next;
+		free(item->text);
+		free(item);
+	}
+}
+
+// Destroys the menu, freeing memory associated with it.
+void menu_destroy(struct menu *menu) {
+	wl_registry_destroy(menu->registry);
+	wl_compositor_destroy(menu->compositor);
+	wl_shm_destroy(menu->shm);
+	wl_seat_destroy(menu->seat);
+	wl_data_device_manager_destroy(menu->data_device_manager);
+	zwlr_layer_shell_v1_destroy(menu->layer_shell);
+	free_outputs(menu);
+
+	free_keyboard(menu->keyboard);
+	wl_data_device_destroy(menu->data_device);
+	wl_surface_destroy(menu->surface);
+	zwlr_layer_surface_v1_destroy(menu->layer_surface);
+	wl_data_offer_destroy(menu->data_offer);
+
+	free_pages(menu);
+	free_items(menu);
+
+	destroy_buffer(&menu->buffers[0]);
+	destroy_buffer(&menu->buffers[1]);
+
+	wl_display_disconnect(menu->display);
+	free(menu);
 }

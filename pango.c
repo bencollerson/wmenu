@@ -13,12 +13,16 @@ int get_font_height(const char *fontstr) {
 	PangoFontDescription *desc = pango_font_description_from_string(fontstr);
 	PangoFont *font = pango_font_map_load_font(fontmap, context, desc);
 	if (font == NULL) {
+		pango_font_description_free(desc);
+		g_object_unref(context);
 		return -1;
 	}
 	PangoFontMetrics *metrics = pango_font_get_metrics(font, NULL);
 	int height = pango_font_metrics_get_height(metrics) / PANGO_SCALE;
-	pango_font_description_free(desc);
 	pango_font_metrics_unref(metrics);
+	g_object_unref(font);
+	pango_font_description_free(desc);
+	g_object_unref(context);
 	return height;
 }
 
@@ -32,8 +36,8 @@ PangoLayout *get_pango_layout(cairo_t *cairo, const char *font,
 	pango_layout_set_font_description(layout, desc);
 	pango_layout_set_single_paragraph_mode(layout, 1);
 	pango_layout_set_attributes(layout, attrs);
-	pango_attr_list_unref(attrs);
 	pango_font_description_free(desc);
+	pango_attr_list_unref(attrs);
 	return layout;
 }
 

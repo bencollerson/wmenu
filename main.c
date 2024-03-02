@@ -24,11 +24,9 @@ static void noop() {
 	// Do nothing
 }
 
-static void surface_enter(void *data, struct wl_surface *surface,
-		struct wl_output *wl_output) {
+static void surface_enter(void *data, struct wl_surface *surface, struct wl_output *wl_output) {
 	struct menu *menu = data;
-	struct output *output = wl_output_get_user_data(wl_output);
-	menu->output = output;
+	menu->output = wl_output_get_user_data(wl_output);
 }
 
 static const struct wl_surface_listener surface_listener = {
@@ -45,8 +43,7 @@ static void layer_surface_configure(void *data,
 	zwlr_layer_surface_v1_ack_configure(surface, serial);
 }
 
-static void layer_surface_closed(void *data,
-		struct zwlr_layer_surface_v1 *surface) {
+static void layer_surface_closed(void *data, struct zwlr_layer_surface_v1 *surface) {
 	struct menu *menu = data;
 	menu->exit = true;
 }
@@ -82,18 +79,18 @@ static const struct wl_output_listener output_listener = {
 
 static void keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard,
 		uint32_t format, int32_t fd, uint32_t size) {
-	assert(format == WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1);
 	struct keyboard *keyboard = data;
+	assert(format == WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1);
 
 	char *map_shm = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
-	assert (map_shm != MAP_FAILED);
+	assert(map_shm != MAP_FAILED);
 
-	struct xkb_keymap *keymap = xkb_keymap_new_from_string(keyboard->xkb_context,
+	keyboard->keymap = xkb_keymap_new_from_string(keyboard->context,
 		map_shm, XKB_KEYMAP_FORMAT_TEXT_V1, 0);
 	munmap(map_shm, size);
 	close(fd);
 
-	keyboard->xkb_state = xkb_state_new(keymap);
+	keyboard->state = xkb_state_new(keyboard->keymap);
 }
 
 static void keyboard_repeat(struct keyboard *keyboard) {
@@ -109,7 +106,7 @@ static void keyboard_key(void *data, struct wl_keyboard *wl_keyboard,
 	struct keyboard *keyboard = data;
 
 	enum wl_keyboard_key_state key_state = _key_state;
-	xkb_keysym_t sym = xkb_state_key_get_one_sym(keyboard->xkb_state, key + 8);
+	xkb_keysym_t sym = xkb_state_key_get_one_sym(keyboard->state, key + 8);
 	menu_keypress(keyboard->menu, key_state, sym);
 
 	if (key_state == WL_KEYBOARD_KEY_STATE_PRESSED && keyboard->repeat_period >= 0) {
@@ -142,7 +139,7 @@ static void keyboard_modifiers(void *data, struct wl_keyboard *wl_keyboard,
 		uint32_t mods_latched, uint32_t mods_locked,
 		uint32_t group) {
 	struct keyboard *keyboard = data;
-	xkb_state_update_mask(keyboard->xkb_state, mods_depressed, mods_latched,
+	xkb_state_update_mask(keyboard->state, mods_depressed, mods_latched,
 			mods_locked, 0, 0, group);
 }
 
@@ -159,8 +156,10 @@ static void seat_capabilities(void *data, struct wl_seat *seat,
 		enum wl_seat_capability caps) {
 	struct menu *menu = data;
 	if (caps & WL_SEAT_CAPABILITY_KEYBOARD) {
-		struct wl_keyboard *keyboard = wl_seat_get_keyboard(seat);
-		wl_keyboard_add_listener(keyboard, &keyboard_listener, menu->keyboard);
+		struct wl_keyboard *wl_keyboard = wl_seat_get_keyboard(seat);
+		struct keyboard *keyboard = keyboard_create(menu, wl_keyboard);
+		wl_keyboard_add_listener(wl_keyboard, &keyboard_listener, keyboard);
+		menu_set_keyboard(menu, keyboard);
 	}
 }
 
@@ -170,9 +169,9 @@ static const struct wl_seat_listener seat_listener = {
 };
 
 static void data_device_selection(void *data, struct wl_data_device *data_device,
-		struct wl_data_offer *offer) {
+		struct wl_data_offer *data_offer) {
 	struct menu *menu = data;
-	menu->offer = offer;
+	menu->data_offer = data_offer;
 }
 
 static const struct wl_data_device_listener data_device_listener = {
@@ -188,27 +187,22 @@ static void handle_global(void *data, struct wl_registry *registry,
 		uint32_t name, const char *interface, uint32_t version) {
 	struct menu *menu = data;
 	if (strcmp(interface, wl_compositor_interface.name) == 0) {
-		menu->compositor = wl_registry_bind(registry, name,
-				&wl_compositor_interface, 4);
+		menu->compositor = wl_registry_bind(registry, name, &wl_compositor_interface, 4);
 	} else if (strcmp(interface, wl_shm_interface.name) == 0) {
 		menu->shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
 	} else if (strcmp(interface, wl_seat_interface.name) == 0) {
 		menu->seat = wl_registry_bind(registry, name, &wl_seat_interface, 4);
 		wl_seat_add_listener(menu->seat, &seat_listener, menu);
 	} else if (strcmp(interface, wl_data_device_manager_interface.name) == 0) {
-		menu->data_device_manager = wl_registry_bind(registry, name,
-				&wl_data_device_manager_interface, 3);
+		menu->data_device_manager = wl_registry_bind(registry, name, &wl_data_device_manager_interface, 3);
 	} else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
-		menu->layer_shell = wl_registry_bind(registry, name,
-				&zwlr_layer_shell_v1_interface, 1);
+		menu->layer_shell = wl_registry_bind(registry, name, &zwlr_layer_shell_v1_interface, 1);
 	} else if (strcmp(interface, wl_output_interface.name) == 0) {
-		struct output *output = calloc(1, sizeof(struct output));
-		output->output = wl_registry_bind(registry, name,
-				&wl_output_interface, 4);
-		output->menu = menu;
-		output->scale = 1;
-		wl_output_set_user_data(output->output, output);
-		wl_output_add_listener(output->output, &output_listener, output);
+		struct wl_output *wl_output = wl_registry_bind(registry, name, &wl_output_interface, 4);
+		struct output *output = output_create(menu, wl_output);
+		wl_output_set_user_data(wl_output, output);
+		wl_output_add_listener(wl_output, &output_listener, output);
+		menu_add_output(menu, output);
 	}
 }
 
@@ -217,15 +211,8 @@ static const struct wl_registry_listener registry_listener = {
 	.global_remove = noop,
 };
 
-static void keyboard_init(struct keyboard *keyboard, struct menu *menu) {
-	keyboard->xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-	assert(keyboard->xkb_context != NULL);
-	keyboard->repeat_timer = timerfd_create(CLOCK_MONOTONIC, 0);
-	assert(keyboard->repeat_timer >= 0);
-	keyboard->menu = menu;
-}
-
-static void create_surface(struct menu *menu) {
+// Connect to the Wayland display.
+static void menu_connect(struct menu *menu) {
 	menu->display = wl_display_connect(NULL);
 	if (!menu->display) {
 		fprintf(stderr, "Failed to connect to display.\n");
@@ -240,14 +227,17 @@ static void create_surface(struct menu *menu) {
 	assert(menu->seat != NULL);
 	assert(menu->data_device_manager != NULL);
 	assert(menu->layer_shell != NULL);
+	menu->registry = registry;
 
 	// Get data device for seat
 	struct wl_data_device *data_device = wl_data_device_manager_get_data_device(
 			menu->data_device_manager, menu->seat);
 	wl_data_device_add_listener(data_device, &data_device_listener, menu);
+	menu->data_device = data_device;
 
-	// Second roundtrip for xdg-output
+	// Second roundtrip for seat and output listeners
 	wl_display_roundtrip(menu->display);
+	assert(menu->keyboard != NULL);
 
 	if (menu->output_name && !menu->output) {
 		fprintf(stderr, "Output %s not found\n", menu->output_name);
@@ -265,6 +255,7 @@ static void create_surface(struct menu *menu) {
 		"menu"
 	);
 	assert(layer_surface != NULL);
+	menu->layer_surface = layer_surface;
 
 	uint32_t anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
 		ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
@@ -285,14 +276,9 @@ static void create_surface(struct menu *menu) {
 }
 
 int main(int argc, char *argv[]) {
-	struct menu *menu = calloc(1, sizeof(struct menu));
-	menu_init(menu, argc, argv);
-
-	struct keyboard *keyboard = calloc(1, sizeof(struct keyboard));
-	keyboard_init(keyboard, menu);
-	menu->keyboard = keyboard;
-
-	create_surface(menu);
+	struct menu *menu = menu_create();
+	menu_getopts(menu, argc, argv);
+	menu_connect(menu);
 	render_menu(menu);
 
 	read_menu_items(menu);
@@ -300,7 +286,7 @@ int main(int argc, char *argv[]) {
 
 	struct pollfd fds[] = {
 		{ wl_display_get_fd(menu->display), POLLIN },
-		{ keyboard->repeat_timer, POLLIN },
+		{ menu->keyboard->repeat_timer, POLLIN },
 	};
 	const size_t nfds = sizeof(fds) / sizeof(*fds);
 
@@ -325,13 +311,14 @@ int main(int argc, char *argv[]) {
 		}
 
 		if (fds[1].revents & POLLIN) {
-			keyboard_repeat(keyboard);
+			keyboard_repeat(menu->keyboard);
 		}
 	}
 
-	wl_display_disconnect(menu->display);
+	bool failure = menu->failure;
+	menu_destroy(menu);
 
-	if (menu->failure) {
+	if (failure) {
 		return EXIT_FAILURE;
 	}
 	return EXIT_SUCCESS;

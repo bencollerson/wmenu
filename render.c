@@ -73,7 +73,7 @@ static void render_prompt(struct menu *menu, cairo_t *cairo) {
 // Renders the input text.
 static void render_input(struct menu *menu, cairo_t *cairo) {
 	render_text(menu, cairo, menu->input, menu->promptw, 0, 0,
-		0, menu->foreground, menu->padding, menu->padding);
+		0, menu->normalfg, menu->padding, menu->padding);
 }
 
 // Renders a cursor for the input field.
@@ -91,8 +91,8 @@ static void render_cursor(struct menu *menu, cairo_t *cairo) {
 
 // Renders a single menu item horizontally.
 static int render_horizontal_item(struct menu *menu, cairo_t *cairo, struct item *item, int x) {
-	uint32_t bg_color = menu->sel == item ? menu->selectionbg : menu->background;
-	uint32_t fg_color = menu->sel == item ? menu->selectionfg : menu->foreground;
+	uint32_t bg_color = menu->sel == item ? menu->selectionbg : menu->normalbg;
+	uint32_t fg_color = menu->sel == item ? menu->selectionfg : menu->normalfg;
 
 	return render_text(menu, cairo, item->text, x, 0, 0,
 		bg_color, fg_color, menu->padding, menu->padding);
@@ -100,8 +100,8 @@ static int render_horizontal_item(struct menu *menu, cairo_t *cairo, struct item
 
 // Renders a single menu item vertically.
 static int render_vertical_item(struct menu *menu, cairo_t *cairo, struct item *item, int x, int y) {
-	uint32_t bg_color = menu->sel == item ? menu->selectionbg : menu->background;
-	uint32_t fg_color = menu->sel == item ? menu->selectionfg : menu->foreground;
+	uint32_t bg_color = menu->sel == item ? menu->selectionbg : menu->normalbg;
+	uint32_t fg_color = menu->sel == item ? menu->selectionfg : menu->normalfg;
 
 	render_text(menu, cairo, item->text, x, y, menu->width - x,
 		bg_color, fg_color, menu->padding, 0);
@@ -139,7 +139,7 @@ static void render_vertical_page(struct menu *menu, cairo_t *cairo, struct page 
 static void render_to_cairo(struct menu *menu, cairo_t *cairo) {
 	// Render background
 	cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
-	cairo_set_source_u32(cairo, menu->background);
+	cairo_set_source_u32(cairo, menu->normalbg);
 	cairo_paint(cairo);
 
 	// Render prompt and input
@@ -196,4 +196,5 @@ void render_menu(struct menu *menu) {
 
 cleanup:
 	cairo_destroy(cairo);
+	cairo_surface_destroy(recorder);
 }
