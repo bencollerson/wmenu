@@ -33,6 +33,7 @@ struct menu *menu_create(menu_callback callback) {
 	menu->selectionbg = 0x005577ff;
 	menu->selectionfg = 0xeeeeeeff;
 	menu->callback = callback;
+	menu->bottom = true;
 	return menu;
 }
 
@@ -90,7 +91,7 @@ void menu_getopts(struct menu *menu, int argc, char *argv[]) {
 		"\t[-N color] [-n color] [-M color] [-m color] [-S color] [-s color]\n";
 
 	int opt;
-	while ((opt = getopt(argc, argv, "bCchiPvf:l:o:p:N:n:M:m:S:s:")) != -1) {
+	while ((opt = getopt(argc, argv, "bCchiPtvf:l:o:p:N:n:M:m:S:s:")) != -1) {
 		switch (opt) {
 		case 'b':
 			menu->bottom = true;
@@ -106,6 +107,9 @@ void menu_getopts(struct menu *menu, int argc, char *argv[]) {
 			break;
 		case 'P':
 			menu->passwd = true;
+			break;
+		case 't':
+			menu->bottom = false;
 			break;
 		case 'v':
 			puts("wmenu " VERSION);
