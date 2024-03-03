@@ -28,10 +28,10 @@ struct menu *menu_create(menu_callback callback) {
 	menu->font = "monospace 10";
 	menu->normalbg = 0x222222ff;
 	menu->normalfg = 0xbbbbbbff;
-	menu->promptbg = 0x005577ff;
-	menu->promptfg = 0xeeeeeeff;
-	menu->selectionbg = 0x005577ff;
-	menu->selectionfg = 0xeeeeeeff;
+	menu->promptbg = 0x223344ff;
+	menu->promptfg = 0xbbbbbbff;
+	menu->selectionbg = 0x223344ff;
+	menu->selectionfg = 0xbbbbbbff;
 	menu->callback = callback;
 	menu->bottom = true;
 	return menu;
