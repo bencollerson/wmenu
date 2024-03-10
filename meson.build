@@ -33,6 +33,8 @@ rt = cc.find_library('rt')
 subdir('protocols')
 subdir('docs')
 
+install_data('wmenu_run', install_dir: get_option('bindir'))
+
 executable(
 	'wmenu',
 	files(
