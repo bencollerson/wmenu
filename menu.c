@@ -89,17 +89,20 @@ static bool parse_color(const char *color, uint32_t *result) {
 // Parse menu options from command line arguments.
 void menu_getopts(struct menu *menu, int argc, char *argv[]) {
 	const char *usage =
-		"Usage: wmenu [-biv] [-f font] [-l lines] [-o output] [-p prompt]\n"
+		"Usage: wmenu [-biPv] [-f font] [-l lines] [-o output] [-p prompt]\n"
 		"\t[-N color] [-n color] [-M color] [-m color] [-S color] [-s color]\n";
 
 	int opt;
-	while ((opt = getopt(argc, argv, "bhivf:l:o:p:N:n:M:m:S:s:")) != -1) {
+	while ((opt = getopt(argc, argv, "bhiPvf:l:o:p:N:n:M:m:S:s:")) != -1) {
 		switch (opt) {
 		case 'b':
 			menu->bottom = true;
 			break;
 		case 'i':
 			menu->strncmp = strncasecmp;
+			break;
+		case 'P':
+			menu->passwd = true;
 			break;
 		case 'v':
 			puts("wmenu " VERSION);
@@ -335,8 +338,13 @@ static void match_items(struct menu *menu) {
 
 // Read menu items from standard input.
 void read_menu_items(struct menu *menu) {
-	char buf[sizeof menu->input];
+	if (menu->passwd) {
+		// Don't read standard input in password mode
+		calc_widths(menu);
+		return;
+	}
 
+	char buf[sizeof menu->input];
 	struct item **next = &menu->items;
 	while (fgets(buf, sizeof buf, stdin)) {
 		char *p = strchr(buf, '\n');

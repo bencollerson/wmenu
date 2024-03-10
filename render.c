@@ -1,4 +1,7 @@
+#define _POSIX_C_SOURCE 200809L
 #include <cairo/cairo.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "render.h"
 
@@ -72,8 +75,22 @@ static void render_prompt(struct menu *menu, cairo_t *cairo) {
 
 // Renders the input text.
 static void render_input(struct menu *menu, cairo_t *cairo) {
-	render_text(menu, cairo, menu->input, menu->promptw, 0, 0,
-		0, menu->normalfg, menu->padding, menu->padding);
+	char *censort = NULL;
+
+	if (menu->passwd) {
+		censort = calloc(1, sizeof(menu->input));
+		if (!censort) {
+			return;
+		}
+		memset(censort, '*', strlen(menu->input));
+	}
+
+	render_text(menu, cairo, menu->passwd ? censort : menu->input,
+		menu->promptw, 0, 0, 0, menu->normalfg, menu->padding, menu->padding);
+
+	if (censort) {
+		free(censort);
+	}
 }
 
 // Renders a cursor for the input field.

@@ -53,6 +53,8 @@ struct menu {
 	bool bottom;
 	// The function used to match menu items
 	int (*strncmp)(const char *, const char *, size_t);
+	// Whether the input is a password
+	bool passwd;
 	// The font used to display the menu
 	char *font;
 	// The number of lines to list items vertically

@@ -6,7 +6,7 @@ wmenu - dynamic menu for Wayland
 
 # SYNOPSIS
 
-*wmenu* [-biv] \
+*wmenu* [-biPv] \
   [-f _font_] \
   [-l _lines_] \
   [-o _output_] \
@@ -29,6 +29,10 @@ to those matching the tokens in the input.
 
 *-i*
 	wmenu matches menu items case insensitively.
+
+*-P*
+	wmenu will not directly display the keyboard input, but instead replace it
+	with asterisks. All data from stdin will be ignored.
 
 *-v*
 	prints version information to stdout, then exits.
