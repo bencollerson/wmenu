@@ -740,7 +740,6 @@ void menu_destroy(struct menu *menu) {
 	wl_data_device_destroy(menu->data_device);
 	wl_surface_destroy(menu->surface);
 	zwlr_layer_surface_v1_destroy(menu->layer_surface);
-	wl_data_offer_destroy(menu->data_offer);
 
 	free_pages(menu);
 	free_items(menu);
