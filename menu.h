@@ -84,5 +84,6 @@ void menu_render_items(struct menu *menu);
 void menu_paste(struct menu *menu, const char *text, ssize_t len);
 void menu_keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 		xkb_keysym_t sym);
+int strnsmartcasecmp(const char *s1, const char *s2, size_t n);
 
 #endif

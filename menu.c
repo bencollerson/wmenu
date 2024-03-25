@@ -24,7 +24,7 @@
 // Creates and returns a new menu.
 struct menu *menu_create(menu_callback callback) {
 	struct menu *menu = calloc(1, sizeof(struct menu));
-	menu->strncmp = strncmp;
+	menu->strncmp = strnsmartcasecmp;
 	menu->font = "monospace 10";
 	menu->normalbg = 0x222222ff;
 	menu->normalfg = 0xbbbbbbff;
@@ -90,10 +90,16 @@ void menu_getopts(struct menu *menu, int argc, char *argv[]) {
 		"\t[-N color] [-n color] [-M color] [-m color] [-S color] [-s color]\n";
 
 	int opt;
-	while ((opt = getopt(argc, argv, "bhiPvf:l:o:p:N:n:M:m:S:s:")) != -1) {
+	while ((opt = getopt(argc, argv, "bCchiPvf:l:o:p:N:n:M:m:S:s:")) != -1) {
 		switch (opt) {
 		case 'b':
 			menu->bottom = true;
+			break;
+		case 'C':
+			menu->strncmp = strnsmartcasecmp;
+			break;
+		case 'c':
+			menu->strncmp = strncmp;
 			break;
 		case 'i':
 			menu->strncmp = strncasecmp;
@@ -195,6 +201,21 @@ void menu_add_item(struct menu *menu, char *text, bool sort) {
 		menu->items = new;
 	}
 	menu->lastitem = new;
+}
+
+// returns true if string contains an uppercase letter
+static int has_upper(const char *s) {
+	for (;*s;++s)
+		if (isalpha(*s) && *s == toupper(*s))
+			return true;
+	return false;
+}
+
+// case insensitive comparison unless s2 contains an uppercase letter
+int strnsmartcasecmp(const char *s1, const char *s2, size_t n) {
+	return has_upper(s2) ?
+		strncmp(s1, s2, n) :
+		strncasecmp(s1, s2, n);
 }
 
 static void append_page(struct page *page, struct page **first, struct page **last) {
